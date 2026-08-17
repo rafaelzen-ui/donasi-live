@@ -41,5 +41,13 @@ app.get("/overlay/:id",(_,res)=>res.sendFile(path.resolve("public/overlay.html")
 app.get("/donate/:slug",(_,res)=>res.sendFile(path.resolve("public/donate.html")));
 app.get("*splat",(_,res)=>res.sendFile(path.resolve("public/index.html")));
 
-await initDb();
-app.listen(PORT,()=>console.log(`Donasi.Live listening on ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Donasi.Live listening on ${PORT}`);
+});
+
+try {
+  await initDb();
+  console.log("Database initialized successfully");
+} catch (e) {
+  console.error("Database initialization failed:", e);
+}
