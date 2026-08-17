@@ -16,9 +16,63 @@ app.use(express.json({limit:"1mb"}));
 app.use(express.static("public"));
 const emit=(uid,event,data)=>{for(const r of subscribers.get(uid)||[]){try{r.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)}catch{}}};
 
-app.get("/health",(_,res)=>res.json({ok:true,service:"donasi-live"}));
+app.get("/health", async (_, res) => {
+  try {
+    const { pool } = await import("./db.js");
+    const r = await pool.query("SELECT NOW() AS now");
+    
+    res.json({
+      ok: true,
+      service: "zetdonate",
+      database: "connected",
+      time: r.rows[0].now
+    });
+  } catch (e) {
+    res.status(503).json({
+      ok: false,
+      service: "zetdonate",
+      database: "disconnected",
+      error: e.message
+    });
+  }
+});
 app.post("/api/auth/register",async(req,res)=>{try{const{email,password,displayName}=req.body||{};if(!email||!displayName||!password||password.length<8)return res.status(400).json({success:false,message:"Nama, email, password minimal 8 karakter wajib diisi."});const u=await register(email,password,displayName);res.json({success:true,token:sign(u),user:safeUser(u)})}catch(e){res.status(400).json({success:false,message:e.message})}});
-app.post("/api/auth/login",async(req,res)=>{const u=await findUserByEmail(req.body?.email||"");if(!u||!(await verifyPassword(req.body?.password||"",u.passwordHash)))return res.status(401).json({success:false,message:"Email atau password salah."});res.json({success:true,token:sign(u),user:safeUser(u)})});
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim();
+    const password = String(req.body?.password || "");
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email dan password wajib diisi."
+      });
+    }
+
+    const u = await findUserByEmail(email);
+
+    if (!u || !(await verifyPassword(password, u.passwordHash))) {
+      return res.status(401).json({
+        success: false,
+        message: "Email atau password salah."
+      });
+    }
+
+    res.json({
+      success: true,
+      token: sign(u),
+      user: safeUser(u)
+    });
+  } catch (e) {
+    console.error("LOGIN ERROR:", e);
+
+    res.status(500).json({
+      success: false,
+      message: "Terjadi kesalahan server.",
+      error: process.env.NODE_ENV === "production" ? undefined : e.message
+    });
+  }
+});
 app.get("/api/me",auth,(req,res)=>res.json({success:true,user:safeUser(req.user)}));
 app.get("/api/channels",(_,res)=>res.json({success:true,channels}));
 
@@ -41,13 +95,14 @@ app.get("/overlay/:id",(_,res)=>res.sendFile(path.resolve("public/overlay.html")
 app.get("/donate/:slug",(_,res)=>res.sendFile(path.resolve("public/donate.html")));
 app.get("*splat",(_,res)=>res.sendFile(path.resolve("public/index.html")));
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Donasi.Live listening on ${PORT}`);
-});
-
 try {
   await initDb();
   console.log("Database initialized successfully");
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`ZetDonate listening on ${PORT}`);
+  });
 } catch (e) {
-  console.error("Database initialization failed:", e);
+  console.error("DATABASE INITIALIZATION FAILED:", e);
+  process.exit(1);
 }
